@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>Tidal Forces — eerste versie</title>
+<style>
+  body { font-family: sans-serif; background: #0b1220; color: #e6e6e6; margin: 0; padding: 20px; }
+  h1 { font-size: 1.3rem; }
+  #info { margin-bottom: 16px; font-size: 0.9rem; line-height: 1.5; }
+  #info table { border-collapse: collapse; }
+  #info td { padding: 2px 10px 2px 0; }
+  #info td.label { color: #9ab; }
+  svg { background: #060a14; border: 1px solid #223; }
+  .earth { fill: #1a3a5c; stroke: #4a7; stroke-width: 1; }
+  .barycenter { fill: #ff5555; }
+  .arrow-moon { stroke: #cccccc; stroke-width: 2; }
+  .arrow-sun { stroke: #ffcc33; stroke-width: 2; }
+  .arrow-label { font-size: 12px; fill: #e6e6e6; }
+</style>
+</head>
+<body>
+
+<h1>Tidal Forces — dataconnectie testen</h1>
+<div id="info">bezig met laden...</div>
+<svg id="diagram" width="600" height="600" viewBox="-300 -300 600 600"></svg>
+
+<script type="module">
+// Let op: GEEN statische top-level import van tidalforces.js hier.
+// Een statische import wordt altijd meteen uitgevoerd, ook al staat USE_LIVE_DATA op false,
+// en dat crasht stil bij het rechtstreeks openen van dit bestand via file:// (CORS-blokkade).
+// Daarom wordt tidalforces.js enkel dynamisch geïmporteerd, binnen de live-tak hieronder.
+
+// ---------------------------------------------------------------
+// OPTIE B: statische testvectoren (echte Horizons-call, 2026-Aug-10 12:00 TDB)
+// Referentiekader: Ecliptic J2000, geocentrisch, km
+// ---------------------------------------------------------------
+const STATIC_MOON_VECTOR = { x: -1.056966126254927E+05, y: 3.468354602320630E+05, z: 2.256095621236425E+04 };
+const STATIC_SUN_VECTOR  = { x: -1.118358367855592E+08, y: 1.024103080830563E+08, z: -5.209691971704364E+03 };
+
+// M_maan / M_aarde — zelfde berekening als in tidalforces.js, lokaal gekopieerd
+// om een import te vermijden wanneer we met statische data werken.
+const MASS_RATIO_MOON_EARTH = 1 / 81.30056;
+
+function computeBarycenterVector(moonVector) {
+  const factor = MASS_RATIO_MOON_EARTH / (1 + MASS_RATIO_MOON_EARTH);
+  return {
+    x: moonVector.x * factor,
+    y: moonVector.y * factor,
+    z: moonVector.z * factor
+  };
+}
+
+// ---------------------------------------------------------------
+// Schakelaar: false = statische testdata (optie B), true = live data via eigen API (optie A)
+// Let op: optie A vereist deployment op Cloudflare Pages (met /functions/api/tidalvectors.js mee),
+// want /api/tidalvectors bestaat enkel dan als route. Werkt niet bij rechtstreeks file:// openen.
+// ---------------------------------------------------------------
+const USE_LIVE_DATA = true;
+
+async function loadVectors() {
+  if (USE_LIVE_DATA) {
+    const response = await fetch('/api/tidalvectors');
+    const data = await response.json();
+    return data; // { moonVector, sunVector, barycenterVector, time }
+  }
+  const moonVector = STATIC_MOON_VECTOR;
+  const sunVector = STATIC_SUN_VECTOR;
+  const barycenterVector = computeBarycenterVector(moonVector);
+  return { moonVector, sunVector, barycenterVector };
+}
+
+function vectorLength(v) {
+  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+function showInfo(moonVector, sunVector, barycenterVector, time) {
+  const moonDist = vectorLength(moonVector);
+  const sunDist = vectorLength(sunVector);
+  const baryDist = vectorLength(barycenterVector);
+  const bronLabel = USE_LIVE_DATA
+    ? `live JPL Horizons (${time || 'nu'})`
+    : 'statische testdata (2026-Aug-10 12:00 TDB)';
+
+  document.getElementById('info').innerHTML = `
+    <table>
+      <tr><td class="label">Bron</td><td>${bronLabel}</td></tr>
+      <tr><td class="label">Afstand Maan</td><td>${moonDist.toFixed(0)} km</td></tr>
+      <tr><td class="label">Afstand Zon</td><td>${sunDist.toFixed(0)} km</td></tr>
+      <tr><td class="label">Afstand barycentrum</td><td>${baryDist.toFixed(0)} km (binnen aardstraal 6378 km)</td></tr>
+    </table>
+  `;
+}
+
+// Eenvoudige 2D top-down projectie (X-Y vlak) om richting te tonen.
+// Werkelijke afstanden verschillen enorm (Maan ~380.000 km, Zon ~150 miljoen km),
+// dus de pijlen krijgen een vaste visuele lengte; enkel de RICHTING is realistisch.
+function drawDiagram(moonVector, sunVector, barycenterVector) {
+  const svg = document.getElementById('diagram');
+  const EARTH_RADIUS_PX = 40;
+  const ARROW_LENGTH_PX = 220;
+
+  function unitAngle(v) {
+    const len = Math.sqrt(v.x * v.x + v.y * v.y);
+    return { dx: v.x / len, dy: -v.y / len }; // -y voor schermcoördinaten (y omlaag)
+  }
+
+  const moonDir = unitAngle(moonVector);
+  const sunDir = unitAngle(sunVector);
+
+  // schaal barycentrum wel realistisch (het ligt binnen de aardbol)
+  const baryScale = EARTH_RADIUS_PX / 6378;
+  const baryX = barycenterVector.x * baryScale;
+  const baryY = -barycenterVector.y * baryScale;
+
+  svg.innerHTML = `
+    <circle class="earth" cx="0" cy="0" r="${EARTH_RADIUS_PX}"></circle>
+    <circle class="barycenter" cx="${baryX.toFixed(2)}" cy="${baryY.toFixed(2)}" r="3"></circle>
+
+    <line class="arrow-moon" x1="0" y1="0" x2="${(moonDir.dx * ARROW_LENGTH_PX).toFixed(1)}" y2="${(moonDir.dy * ARROW_LENGTH_PX).toFixed(1)}"></line>
+    <text class="arrow-label" x="${(moonDir.dx * ARROW_LENGTH_PX + 8).toFixed(1)}" y="${(moonDir.dy * ARROW_LENGTH_PX).toFixed(1)}">Maan</text>
+
+    <line class="arrow-sun" x1="0" y1="0" x2="${(sunDir.dx * ARROW_LENGTH_PX).toFixed(1)}" y2="${(sunDir.dy * ARROW_LENGTH_PX).toFixed(1)}"></line>
+    <text class="arrow-label" x="${(sunDir.dx * ARROW_LENGTH_PX + 8).toFixed(1)}" y="${(sunDir.dy * ARROW_LENGTH_PX).toFixed(1)}">Zon</text>
+  `;
+}
+
+loadVectors().then(({ moonVector, sunVector, barycenterVector, time }) => {
+  showInfo(moonVector, sunVector, barycenterVector, time);
+  drawDiagram(moonVector, sunVector, barycenterVector);
+});
+</script>
+
+</body>
+</html>
