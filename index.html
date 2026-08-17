@@ -2,133 +2,691 @@
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<title>Tidal Forces — eerste versie</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Getijkrachten — Maan, Zon en de gradiënt</title>
 <style>
-  body { font-family: sans-serif; background: #0b1220; color: #e6e6e6; margin: 0; padding: 20px; }
-  h1 { font-size: 1.3rem; }
-  #info { margin-bottom: 16px; font-size: 0.9rem; line-height: 1.5; }
-  #info table { border-collapse: collapse; }
-  #info td { padding: 2px 10px 2px 0; }
-  #info td.label { color: #9ab; }
-  svg { background: #060a14; border: 1px solid #223; }
-  .earth { fill: #1a3a5c; stroke: #4a7; stroke-width: 1; }
-  .barycenter { fill: #ff5555; }
-  .arrow-moon { stroke: #cccccc; stroke-width: 2; }
-  .arrow-sun { stroke: #ffcc33; stroke-width: 2; }
-  .arrow-label { font-size: 12px; fill: #e6e6e6; }
+  :root{
+    --bg: #05070d;
+    --panel: #0c1220;
+    --line: #1c2740;
+    --text: #dfe6f2;
+    --dim: #7d8aa8;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background: var(--bg); overflow:hidden;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif; color: var(--text); }
+  #globe { position: fixed; inset: 0; }
+  canvas { display:block; }
+
+  .panel {
+    position: fixed; z-index: 5; background: rgba(12,18,32,0.86);
+    border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(6px);
+    max-height: calc(100vh - 36px); overflow-y: auto;
+  }
+  #info { top: 18px; left: 18px; padding: 16px 18px; width: 300px; }
+  #info h1 { font-size: 15px; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 2px; color: var(--text); }
+  #info .sub { font-size: 12px; color: var(--dim); margin-bottom: 12px; }
+  #info h2 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 16px 0 8px; color: var(--dim); }
+  #info h2:first-of-type { margin-top: 14px; }
+  #info dl { display:grid; grid-template-columns: auto 1fr; gap: 4px 10px; margin: 0; font-size: 12.5px; }
+  #info dt { color: var(--dim); }
+  #info dd { margin:0; text-align:right; font-variant-numeric: tabular-nums; }
+  #info dt.layer-sub { grid-column: 1 / -1; font-weight:600; color: var(--text); text-transform:none;
+    letter-spacing:0; font-size: 12px; margin-top: 8px; }
+  #info dt.layer-sub:first-child { margin-top: 0; }
+  #info-extra .note { font-size: 11.5px; line-height: 1.5; color: var(--dim); }
+  #info .unit-note { margin-top: 10px; font-size: 11.5px; color: var(--dim); }
+
+  #layers-wrap { position: fixed; top: 18px; right: 18px; display: flex; flex-direction: column;
+    gap: 14px; max-height: calc(100vh - 36px); }
+  #layers-wrap .panel { position: static; max-height: none; overflow: visible; }
+  #layers { padding: 14px 16px; width: 240px; }
+  #layers h2 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 14px 0 2px; color: var(--dim); }
+  #layers h2:first-child { margin-top: 0; }
+  #layers .layer-arrow { margin: 0 0 8px; }
+  #layers .layer-arrow svg { display: block; }
+  #layers label { display:flex; align-items:center; gap: 8px; font-size: 12.5px; margin-bottom: 6px; cursor: pointer; }
+  #layers input { accent-color: #b98cff; flex: none; }
+  #layers hr { border: none; border-top: 1px solid var(--line); margin: 10px 0; }
+
+  #markers { padding: 14px 16px; width: 240px; }
+  #markers .marker-row { display:flex; align-items:center; gap: 8px; font-size: 12.5px; margin-bottom: 8px; }
+  #markers .marker-row:last-child { margin-bottom: 0; }
+  #markers .dot { width:10px; height:10px; border-radius:50%; display:inline-block; flex:none; }
+  #markers .ring { width:9px; height:9px; border-radius:50%; display:inline-block; flex:none;
+    border: 2px solid; box-sizing: border-box; background: transparent; }
+
+  #info-extra { bottom: 18px; right: 18px; padding: 14px 16px; width: 300px; }
+  #info-extra h2 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 8px; color: var(--dim); }
 </style>
 </head>
 <body>
 
-<h1>Tidal Forces — dataconnectie testen</h1>
-<div id="info">bezig met laden...</div>
-<svg id="diagram" width="600" height="600" viewBox="-300 -300 600 600"></svg>
+<div id="globe"></div>
 
-<script type="module">
-// Let op: GEEN statische top-level import van tidalforces.js hier.
-// Een statische import wordt altijd meteen uitgevoerd, ook al staat USE_LIVE_DATA op false,
-// en dat crasht stil bij het rechtstreeks openen van dit bestand via file:// (CORS-blokkade).
-// Daarom wordt tidalforces.js enkel dynamisch geïmporteerd, binnen de live-tak hieronder.
+<div class="panel" id="info">
+  <h1>Getijkrachten</h1>
+  <div class="sub">Aarde–Maan–Zon · live momentopname</div>
+
+  <h2>Algemeen</h2>
+  <dl>
+    <dt>Moment (UTC)</dt><dd id="v-time"></dd>
+    <dt>Afstand Aarde–Maan</dt><dd id="v-dist"></dd>
+    <dt>Afstand Aarde–Zon</dt><dd id="v-distsun"></dd>
+  </dl>
+
+  <h2>Versnellingen</h2>
+  <div class="unit-note">1 Gal = 0,01 m/s² (Gal naar Galileo Galilei)</div>
+  <dl id="magnitudes" style="margin-top:10px;"></dl>
+</div>
+
+<div id="layers-wrap">
+<div class="panel" id="layers">
+  <h2>Maan</h2>
+  <div class="layer-arrow"><svg width="46" height="16" viewBox="0 0 46 16"><line x1="1" y1="8" x2="34" y2="8" stroke="#3fa9f5" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="1" stroke="#3fa9f5" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="15" stroke="#3fa9f5" stroke-width="4" stroke-linecap="round"/></svg></div>
+  <label><input type="checkbox" id="chk-m-att"> 1. Aantrekking (oppervlak)</label>
+  <label><input type="checkbox" id="chk-m-att-c"> 2. Aantrekking (centrum, 1 pijl)</label>
+  <label><input type="checkbox" id="chk-m-grad"> 3. Gradiënt t.o.v. centrum</label>
+  <label><input type="checkbox" id="chk-m-grad-tan"> 4. Gradiënt, tangentieel</label>
+  <hr>
+  <h2>Zon</h2>
+  <div class="layer-arrow"><svg width="46" height="16" viewBox="0 0 46 16"><line x1="1" y1="8" x2="34" y2="8" stroke="#ff5b5b" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="1" stroke="#ff5b5b" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="15" stroke="#ff5b5b" stroke-width="4" stroke-linecap="round"/></svg></div>
+  <label><input type="checkbox" id="chk-z-att"> 5. Aantrekking (oppervlak)</label>
+  <label><input type="checkbox" id="chk-z-att-c"> 6. Aantrekking (centrum, 1 pijl)</label>
+  <label><input type="checkbox" id="chk-z-grad"> 7. Gradiënt t.o.v. centrum</label>
+  <label><input type="checkbox" id="chk-z-grad-tan"> 8. Gradiënt, tangentieel</label>
+  <hr>
+  <h2>Totaal</h2>
+  <div class="layer-arrow"><svg width="46" height="16" viewBox="0 0 46 16"><line x1="1" y1="8" x2="34" y2="8" stroke="#b98cff" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="1" stroke="#b98cff" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="15" stroke="#b98cff" stroke-width="4" stroke-linecap="round"/></svg></div>
+  <label><input type="checkbox" id="chk-t-grad" checked> 9. Som gradiënten (Maan + Zon)</label>
+  <label><input type="checkbox" id="chk-t-grad-tan"> 10. Som, tangentieel</label>
+</div>
+
+<div class="panel" id="markers">
+  <div class="marker-row"><i class="dot" style="background:#3fa9f5"></i>Maan loodrecht boven</div>
+  <div class="marker-row"><i class="ring" style="border-color:#3fa9f5"></i>Maan antipode</div>
+  <div class="marker-row"><i class="dot" style="background:#ff5b5b"></i>Zon loodrecht boven</div>
+  <div class="marker-row"><i class="ring" style="border-color:#ff5b5b"></i>Zon antipode</div>
+</div>
+</div>
+
+<div class="panel" id="info-extra">
+  <h2>Informatie</h2>
+  <div class="note">
+    Per hemellichaam: de <b>aantrekking op het oppervlak</b> (varieert per punt) en
+    de <b>aantrekking in het Aardmiddelpunt</b> (overal dezelfde waarde — één pijl).
+    Het verschil tussen die twee is de <b>gradiënt t.o.v. het centrum</b> — dát is de
+    eigenlijke getij-drijvende kracht (geen centrifugaalkracht, geen barycentrum
+    nodig). "Tangentieel" = die gradiënt geprojecteerd op het lokale aardoppervlak,
+    het deel dat effectief water verplaatst. Laag 1 en 2 hebben dezelfde schaal, laag 3 en 4 hebben dezelfde schaal.
+	Alle andere lagen hebben ook eenzelfde schaal.
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(async () => {
 
 // ---------------------------------------------------------------
-// OPTIE B: statische testvectoren (echte Horizons-call, 2026-Aug-10 12:00 TDB)
-// Referentiekader: Ecliptic J2000, geocentrisch, km
+// LIVE DATA — opgehaald bij eigen Cloudflare Function (/api/tidalvectors),
+// die op zijn beurt JPL Horizons bevraagt. Vervangt de vroegere statische
+// Meeus-benadering. Werkt enkel na deployment op Cloudflare Pages
+// (met /functions/api/tidalvectors.js mee) — niet bij rechtstreeks
+// openen via file://.
 // ---------------------------------------------------------------
-const STATIC_MOON_VECTOR = { x: -1.056966126254927E+05, y: 3.468354602320630E+05, z: 2.256095621236425E+04 };
-const STATIC_SUN_VECTOR  = { x: -1.118358367855592E+08, y: 1.024103080830563E+08, z: -5.209691971704364E+03 };
+const DATA = await (await fetch('/api/tidalvectors')).json();
 
-// M_maan / M_aarde — zelfde berekening als in tidalforces.js, lokaal gekopieerd
-// om een import te vermijden wanneer we met statische data werken.
-const MASS_RATIO_MOON_EARTH = 1 / 81.30056;
+const EARTH_RADIUS_KM = 6371;
+const GM_MOON_KM3 = 4904.8695;       // km3/s2
+const GM_SUN_KM3 = 1.32712440018e11; // km3/s2
+const UGAL_PER_KMPS2 = 1e11;         // (1000 m/s2 per km/s2) / (1e-8 m/s2 per µGal)
 
-function computeBarycenterVector(moonVector) {
-  const factor = MASS_RATIO_MOON_EARTH / (1 + MASS_RATIO_MOON_EARTH);
+// ---------------------------------------------------------------
+// SCENE SETUP
+// ---------------------------------------------------------------
+const container = document.getElementById('globe');
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 100);
+camera.position.set(4.4, 2.4, 5.2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+container.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.06;
+controls.minDistance = 3;
+controls.maxDistance = 14;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+const sunLight = new THREE.DirectionalLight(0xffffff, 0.6);
+sunLight.position.set(5, 3, 4);
+scene.add(sunLight);
+
+// sterrenveld
+const starGeo = new THREE.BufferGeometry();
+const starCount = 1200;
+const starPos = new Float32Array(starCount * 3);
+for (let i = 0; i < starCount; i++) {
+  const r = 40 + Math.random() * 30;
+  const th = Math.random() * Math.PI * 2;
+  const ph = Math.acos(2 * Math.random() - 1);
+  starPos[i*3]   = r * Math.sin(ph) * Math.cos(th);
+  starPos[i*3+1] = r * Math.sin(ph) * Math.sin(th);
+  starPos[i*3+2] = r * Math.cos(ph);
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x8899bb, size: 0.05 })));
+
+// ---------------------------------------------------------------
+// AARDE
+// ---------------------------------------------------------------
+const R = 2;
+const earthTexture = new THREE.TextureLoader().load(
+  'https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg'
+);
+const earth = new THREE.Mesh(
+  new THREE.SphereGeometry(R, 48, 48),
+  new THREE.MeshStandardMaterial({
+    map: earthTexture,
+    color: 0xffffff,
+    roughness: 0.9,
+    metalness: 0.0,
+    transparent: true,
+    opacity: 0.88,
+    depthWrite: true
+  })
+);
+scene.add(earth);
+
+// ---------------------------------------------------------------
+// RICHTINGEN (Aarde-vast): naar de Maan en naar de Zon
+// ---------------------------------------------------------------
+const deg2rad = Math.PI / 180;
+const latM = DATA.sublunar_lat_deg * deg2rad;
+const lonM = DATA.sublunar_lon_deg * deg2rad;
+const moonDir = new THREE.Vector3(
+  Math.cos(latM) * Math.cos(lonM), Math.sin(latM), Math.cos(latM) * Math.sin(lonM)
+).normalize();
+
+const latS = DATA.subsolar_lat_deg * deg2rad;
+const lonS = DATA.subsolar_lon_deg * deg2rad;
+const sunDir = new THREE.Vector3(
+  Math.cos(latS) * Math.cos(lonS), Math.sin(latS), Math.cos(latS) * Math.sin(lonS)
+).normalize();
+
+// ---------------------------------------------------------------
+// SUBLUNAIR/SUBSOLAIR PUNT (gevulde schijf) EN HUN ANTIPODE (open cirkel)
+// Maan = blauw, Zon = rood
+// ---------------------------------------------------------------
+function maakSchijf(dir, kleur) {
+  const schijf = new THREE.Mesh(
+    new THREE.CircleGeometry(0.045, 32),
+    new THREE.MeshBasicMaterial({ color: kleur, side: THREE.DoubleSide })
+  );
+  schijf.position.copy(dir.clone().multiplyScalar(R * 1.002));
+  schijf.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+  return schijf;
+}
+function maakCirkel(dir, kleur) {
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.032, 0.045, 32),
+    new THREE.MeshBasicMaterial({ color: kleur, side: THREE.DoubleSide })
+  );
+  ring.position.copy(dir.clone().multiplyScalar(R * 1.002));
+  ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+  return ring;
+}
+scene.add(maakSchijf(moonDir, 0x3fa9f5));
+scene.add(maakSchijf(sunDir, 0xff5b5b));
+scene.add(maakCirkel(moonDir.clone().multiplyScalar(-1), 0x3fa9f5));
+scene.add(maakCirkel(sunDir.clone().multiplyScalar(-1), 0xff5b5b));
+
+// ---------------------------------------------------------------
+// GELIJKMATIGE PUNTEN OVER HET BOLOPPERVLAK (Fibonacci-bol)
+// ---------------------------------------------------------------
+const N = 324;
+const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+const pts = [];
+for (let i = 0; i < N; i++) {
+  const y = 1 - (i / (N - 1)) * 2;
+  const rad = Math.sqrt(1 - y * y);
+  const theta = goldenAngle * i;
+  pts.push(new THREE.Vector3(Math.cos(theta) * rad, y, Math.sin(theta) * rad));
+}
+
+// ---------------------------------------------------------------
+// PER PUNT: aantrekking Maan/Zon op het oppervlak (varieert),
+// hun aantrekking in het Aardmiddelpunt (uniform, 1 waarde), en
+// de gradiënt (= oppervlak min centrum) — dat is de eigenlijke
+// getij-drijvende versnelling. Geen centrifugaalkracht, geen
+// barycentrum nodig.
+// ---------------------------------------------------------------
+const moonPosKm = moonDir.clone().multiplyScalar(DATA.distance_km);
+const sunPosKm  = sunDir.clone().multiplyScalar(DATA.sun_distance_km);
+
+// aantrekking in het Aardmiddelpunt (layer 2 / layer 6) — telkens 1 vector
+const moonAttCenterVec = moonDir.clone().multiplyScalar(GM_MOON_KM3 / (DATA.distance_km * DATA.distance_km) * UGAL_PER_KMPS2);
+const sunAttCenterVec  = sunDir.clone().multiplyScalar(GM_SUN_KM3 / (DATA.sun_distance_km * DATA.sun_distance_km) * UGAL_PER_KMPS2);
+
+const mAtt = [], zAtt = [], mGrad = [], zGrad = [], tGrad = [];
+for (let i = 0; i < N; i++) {
+  const pointKm = pts[i].clone().multiplyScalar(EARTH_RADIUS_KM);
+
+  const rMoon = moonPosKm.clone().sub(pointKm);
+  const dMoon = rMoon.length();
+  const mVec = rMoon.normalize().multiplyScalar(GM_MOON_KM3 / (dMoon*dMoon) * UGAL_PER_KMPS2);
+
+  const rSun = sunPosKm.clone().sub(pointKm);
+  const dSun = rSun.length();
+  const sVec = rSun.normalize().multiplyScalar(GM_SUN_KM3 / (dSun*dSun) * UGAL_PER_KMPS2);
+
+  const mGradVec = mVec.clone().sub(moonAttCenterVec);   // layer 3: oppervlak - centrum
+  const zGradVec = sVec.clone().sub(sunAttCenterVec);    // layer 7
+
+  mAtt.push(mVec);
+  zAtt.push(sVec);
+  mGrad.push(mGradVec);
+  zGrad.push(zGradVec);
+  tGrad.push(mGradVec.clone().add(zGradVec));            // layer 9: som van de gradiënten
+}
+
+// ---------------------------------------------------------------
+// HELPER: bouwt een (volledige, tangentiële) laag-paar uit een
+// array van vectoren per punt
+// ---------------------------------------------------------------
+const arrowLen = 0.42; // vaste lengte, enkel nog gebruikt voor de enkele centrale pijl (laag 2/6)
+const MIN_PIJL_LENGTE = 0.15;
+const MAX_PIJL_LENGTE = 0.55;
+// pijlpunt (kop) heeft overal dezelfde, vaste grootte — niet gekoppeld
+// aan de schachtlengte, want die varieert nu zuiver proportioneel
+// (tot bijna 0 toe) en een kop die daarmee meekrimpt is onleesbaar
+const PIJLKOP_LENGTE = 0.04;
+// open pijlkop = 2 losse beentjes i.p.v. een gevulde driehoek/kegel, zodat
+// een korte schacht nooit onder de kop verdwijnt
+const BEEN_HOEK = 25 * Math.PI / 180;
+// vaste kleur per hemellichaam voor alle pijlen (volledig én tangentieel)
+const KLEUR_MAAN = 0x3fa9f5; // blauw
+const KLEUR_ZON  = 0xff5b5b; // rood
+const KLEUR_SOM  = 0xb98cff; // paars
+
+// berekent min/max grootte (volledig + tangentieel) van een vectorenset,
+// zodat meerdere lagen desgewenst op dezelfde schaal gezet kunnen worden
+function berekenGrenzen(vecArr) {
+  let minVolLen = Infinity, maxVolLen = -Infinity;
+  let minTanLen = Infinity, maxTanLen = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const p = pts[i];
+    const v = vecArr[i];
+    const volLen = v.length();
+    if (volLen < minVolLen) minVolLen = volLen;
+    if (volLen > maxVolLen) maxVolLen = volLen;
+    const tanLen = v.clone().sub(p.clone().multiplyScalar(v.dot(p))).length();
+    if (tanLen < minTanLen) minTanLen = tanLen;
+    if (tanLen > maxTanLen) maxTanLen = tanLen;
+  }
+  return { minVolLen, maxVolLen, minTanLen, maxTanLen };
+}
+
+// standaard rotatie-as voor de kop: loodrecht op de schacht, willekeurige
+// rol rond de schacht (enkel gebruikt als er geen as wordt meegegeven)
+function standaardAs(dir) {
+  const y = new THREE.Vector3(0, 1, 0);
+  let as = new THREE.Vector3().crossVectors(y, dir);
+  if (as.lengthSq() < 1e-8) as = new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), dir);
+  return as.normalize();
+}
+
+// bouwt 1 pijl: een dunne lijn als schacht + een open kop van 2 beentjes
+// (i.p.v. een gevulde driehoek/kegel) zodat de kop de schacht nooit
+// bedekt, ook niet bij een korte pijl. De 2 beentjes worden gespreid door
+// het schacht-eindpunt te roteren rond `as`; geef voor tangentiële pijlen
+// de lokale boloppervlak-normaal mee als `as`, zodat beide beentjes zelf
+// ook tangentieel blijven en niet in de aardbol verdwijnen
+function maakPijl(origin, dir, lengte, kleur, as) {
+  const groep = new THREE.Group();
+  const eindpunt = dir.clone().multiplyScalar(lengte);
+
+  const schachtGeom = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), eindpunt]);
+  groep.add(new THREE.Line(schachtGeom, new THREE.LineBasicMaterial({ color: kleur })));
+
+  const rotatieAs = as || standaardAs(dir);
+  const terug = dir.clone().multiplyScalar(-PIJLKOP_LENGTE);
+  const been1 = terug.clone().applyAxisAngle(rotatieAs, BEEN_HOEK);
+  const been2 = terug.clone().applyAxisAngle(rotatieAs, -BEEN_HOEK);
+  const kopGeom = new THREE.BufferGeometry().setFromPoints([eindpunt.clone().add(been1), eindpunt, eindpunt.clone().add(been2)]);
+  groep.add(new THREE.Line(kopGeom, new THREE.LineBasicMaterial({ color: kleur })));
+
+  groep.position.copy(origin);
+  return groep;
+}
+
+function bouwLaagPaar(vecArr, kleurVol, opties) {
+  const { grenzenOverride, gebruikStretch = true } = opties || {};
+  const tans = [];
+  for (let i = 0; i < N; i++) {
+    const p = pts[i];
+    const v = vecArr[i];
+    tans.push(v.clone().sub(p.clone().multiplyScalar(v.dot(p))));
+  }
+  const { minVolLen, maxVolLen } = grenzenOverride || berekenGrenzen(vecArr);
+
+  // volledige pijlen: standaard (laag 1/5) blijft de min-max stretch —
+  // ongewijzigd, want de kleinste waarde daar is nooit echt 0. Voor
+  // laag 3/7/9 (gebruikStretch = false) geen stretch meer: zuiver
+  // proportioneel vanaf 0, dezelfde soort schaal als de tangentiële
+  // pijlen hieronder, zodat nergens nog een waarde kunstmatig wordt
+  // opgetrokken.
+  function pijlLengteVol(len) {
+    if (!gebruikStretch) return (len / (maxVolLen || 1)) * MAX_PIJL_LENGTE;
+    let t = (len - minVolLen) / (maxVolLen - minVolLen || 1);
+    t = Math.max(0, Math.min(1, t));
+    return MIN_PIJL_LENGTE + (MAX_PIJL_LENGTE - MIN_PIJL_LENGTE) * t;
+  }
+
+  // tangentiële pijlen (laag 4/8/10): altijd zuiver proportioneel vanaf 0,
+  // met dezelfde maxVolLen-referentie als de volledige pijlen van
+  // laag 3/7/9 — zo geeft 0 µGal ook echt lengte 0, en is de verhouding
+  // tangentieel/volledig overal exact de fysische verhouding.
+  function tanPijlLengte(len) {
+    return (len / (maxVolLen || 1)) * MAX_PIJL_LENGTE;
+  }
+
+  const volGroup = new THREE.Group();
+  const tanGroup = new THREE.Group();
+  for (let i = 0; i < N; i++) {
+    const origin = pts[i].clone().multiplyScalar(R);
+    const volLengte = pijlLengteVol(vecArr[i].length());
+    volGroup.add(maakPijl(origin, vecArr[i].clone().normalize(), volLengte, kleurVol));
+
+    const tanLen = tans[i].length();
+    if (tanLen > 1e-9) {
+      const tanLengte = tanPijlLengte(tanLen);
+      tanGroup.add(maakPijl(origin, tans[i].clone().normalize(), tanLengte, kleurVol, pts[i]));
+    }
+  }
+  return { volGroup, tanGroup };
+}
+
+// laag 2 / laag 6: een pijl vanuit het Aardmiddelpunt met een dikke
+// cilinder-schacht en een open kop (2 beentjes), plus een gestippelde
+// centerlijn tussen de loodrecht-boven-schijf en de antipode-cirkel
+function bouwCentrumLaag(vec, kleur) {
+  const richting = vec.clone().normalize();
+  const groep = new THREE.Group();
+
+  // pijlkop 2x groter dan elders; schacht 4x dikker dan de oorspronkelijke
+  // schachtstraal (0,045); schachtlengte blijft ongewijzigd
+  const kopLengte = PIJLKOP_LENGTE * 1;
+  const schachtStraal = 0.01 * 1;
+  const schachtLengte = arrowLen - PIJLKOP_LENGTE;
+
+  const pijl = new THREE.Group();
+  const schacht = new THREE.Mesh(
+    new THREE.CylinderGeometry(schachtStraal, schachtStraal, schachtLengte, 16),
+    new THREE.MeshBasicMaterial({ color: kleur })
+  );
+  schacht.position.y = schachtLengte / 2;
+  pijl.add(schacht);
+
+  // open kop: 2 beentjes i.p.v. een gevulde kegel, zodat de dikke schacht
+  // eronder zichtbaar blijft
+  const tip = new THREE.Vector3(0, schachtLengte + kopLengte, 0);
+  const been1 = new THREE.Vector3(Math.sin(BEEN_HOEK), -Math.cos(BEEN_HOEK), 0).multiplyScalar(kopLengte);
+  const been2 = new THREE.Vector3(-Math.sin(BEEN_HOEK), -Math.cos(BEEN_HOEK), 0).multiplyScalar(kopLengte);
+  const kopGeom = new THREE.BufferGeometry().setFromPoints([tip.clone().add(been1), tip, tip.clone().add(been2)]);
+  const kop = new THREE.Line(kopGeom, new THREE.LineBasicMaterial({ color: kleur, linewidth: 2 }));
+  pijl.add(kop);
+
+  pijl.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), richting);
+  groep.add(pijl);
+
+  const van  = richting.clone().multiplyScalar(-R * 1.002);
+  const naar = richting.clone().multiplyScalar(R * 1.002);
+  const lijnGeom = new THREE.BufferGeometry().setFromPoints([van, naar]);
+  const lijn = new THREE.Line(lijnGeom, new THREE.LineDashedMaterial({ color: kleur, dashSize: 0.08, gapSize: 0.05 }));
+  lijn.computeLineDistances(); // vereist om de streepjes te tekenen
+  groep.add(lijn);
+
+  return groep;
+}
+
+const mAttPair  = bouwLaagPaar(mAtt,  KLEUR_MAAN);  // laag 1
+
+// laag 3, 7 en 9 delen dezelfde maxVolLen-referentie, zodat zichtbaar is dat de
+// zonvectoren kleiner zijn dan de maanvectoren, en dat de som (laag 9)
+// daar consistent mee is
+const gMGrad = berekenGrenzen(mGrad);
+const gZGrad = berekenGrenzen(zGrad);
+const gTGrad = berekenGrenzen(tGrad);
+const gedeeldeGradientGrenzen = {
+  maxVolLen: Math.max(gMGrad.maxVolLen, gZGrad.maxVolLen, gTGrad.maxVolLen)
+};
+
+const zAttPair  = bouwLaagPaar(zAtt,  KLEUR_ZON);  // laag 5
+const mGradPair = bouwLaagPaar(mGrad, KLEUR_MAAN, { grenzenOverride: gedeeldeGradientGrenzen, gebruikStretch: false }); // laag 3
+const zGradPair = bouwLaagPaar(zGrad, KLEUR_ZON,  { grenzenOverride: gedeeldeGradientGrenzen, gebruikStretch: false }); // laag 7
+const tGradPair = bouwLaagPaar(tGrad, KLEUR_SOM,  { grenzenOverride: gedeeldeGradientGrenzen, gebruikStretch: false }); // laag 9
+
+const mAttCGroup = bouwCentrumLaag(moonAttCenterVec, KLEUR_MAAN);
+const zAttCGroup = bouwCentrumLaag(sunAttCenterVec, KLEUR_ZON);
+scene.add(mAttCGroup); scene.add(zAttCGroup);
+mAttCGroup.visible = false; zAttCGroup.visible = false;
+document.getElementById('chk-m-att-c').addEventListener('change', e => { mAttCGroup.visible = e.target.checked; });
+document.getElementById('chk-z-att-c').addEventListener('change', e => { zAttCGroup.visible = e.target.checked; });
+
+const alleParen = { 'm-grad': mGradPair, 'z-grad': zGradPair, 't-grad': tGradPair };
+
+for (const key in alleParen) {
+  const { volGroup, tanGroup } = alleParen[key];
+  scene.add(volGroup); scene.add(tanGroup);
+  volGroup.visible = false;
+  tanGroup.visible = false;
+
+  document.getElementById('chk-' + key).addEventListener('change', e => { volGroup.visible = e.target.checked; });
+  document.getElementById('chk-' + key + '-tan').addEventListener('change', e => { tanGroup.visible = e.target.checked; });
+}
+tGradPair.volGroup.visible = true; // standaard aan, matcht de checkbox hierboven
+
+// klassieke aardeweergave overal: opaciteit 0.75 bij de "gewone" lagen,
+// opaciteit 0.5 bij de centrale-pijl-lagen 2/6, opaciteit 1 (ondoorzichtig)
+// bij de tangentiële lagen 4/8/10
+const AARDE_OPACITEIT = {
+  'chk-m-att': 0.75, 'chk-m-att-c': 0.5, 'chk-m-grad': 0.75, 'chk-m-grad-tan': 1,
+  'chk-z-att': 0.75, 'chk-z-att-c': 0.5, 'chk-z-grad': 0.75, 'chk-z-grad-tan': 1,
+  'chk-t-grad': 0.75, 'chk-t-grad-tan': 1
+};
+function updateAardeTransparantie() {
+  const actief = Object.keys(AARDE_OPACITEIT).filter(id => document.getElementById(id).checked);
+  if (actief.length === 0) {
+    // geen enkele laag aan: aarde ondoorzichtig, enkel de stipjes te zien
+    earth.material.opacity = 1;
+    earth.material.depthWrite = true;
+    return;
+  }
+  // bij meerdere actieve lagen: de laagste opaciteit (meest doorzichtig) wint
+  const opaciteit = Math.min(...actief.map(id => AARDE_OPACITEIT[id]));
+  earth.material.opacity = opaciteit;
+  earth.material.depthWrite = true;
+}
+Object.keys(AARDE_OPACITEIT).forEach(id => {
+  document.getElementById(id).addEventListener('change', updateAardeTransparantie);
+});
+updateAardeTransparantie();
+
+// laag 1/5 hebben geen tangentiële variant (enkel volledige vector) —
+// aparte, eenvoudigere binding
+const attParen = { 'm-att': mAttPair, 'z-att': zAttPair };
+for (const key in attParen) {
+  const { volGroup } = attParen[key];
+  scene.add(volGroup);
+  volGroup.visible = false;
+  document.getElementById('chk-' + key).addEventListener('change', e => { volGroup.visible = e.target.checked; });
+}
+
+// ---------------------------------------------------------------
+// ONDOORZICHTIGE KERNBOL — zichtbaar bij laag 1, 3, 5, 7 en 9.
+// Straal ruim kleiner dan R - arrowLen, zodat zelfs de langste
+// naar-binnen-wijzende pijl er nooit tegenaan loopt (niet afgekapt wordt).
+// ---------------------------------------------------------------
+const KERN_RADIUS = R - MAX_PIJL_LENGTE - 0.05;
+const kern = new THREE.Mesh(
+  new THREE.SphereGeometry(KERN_RADIUS, 32, 32),
+  new THREE.MeshBasicMaterial({ color: 0x000000 })
+);
+scene.add(kern);
+kern.visible = false;
+
+function updateKernZichtbaarheid() {
+  kern.visible = ['chk-m-att', 'chk-m-grad', 'chk-z-att', 'chk-z-grad', 'chk-t-grad']
+    .some(id => document.getElementById(id).checked);
+}
+['chk-m-att', 'chk-m-grad', 'chk-z-att', 'chk-z-grad', 'chk-t-grad'].forEach(id => {
+  document.getElementById(id).addEventListener('change', updateKernZichtbaarheid);
+});
+updateKernZichtbaarheid();
+
+// ---------------------------------------------------------------
+// GROOTTEORDES (µGal) — de echte waarden staan hier en in de pijllengtes
+// ---------------------------------------------------------------
+function ugal(n) { return n.toLocaleString('nl-BE', {maximumFractionDigits: 0}) + ' µGal'; }
+
+// laag 1 en 5 (aantrekking op het oppervlak): exacte gesloten vorm.
+// Het dichtste/verste punt op de aardbol t.o.v. het hemellichaam ligt
+// altijd precies op d-Re (sublunair/subsolair) resp. d+Re (antipode).
+function exacteOppervlakGrenzen(gmKm3, dKm) {
   return {
-    x: moonVector.x * factor,
-    y: moonVector.y * factor,
-    z: moonVector.z * factor
+    min: gmKm3 / ((dKm + EARTH_RADIUS_KM) ** 2) * UGAL_PER_KMPS2,
+    max: gmKm3 / ((dKm - EARTH_RADIUS_KM) ** 2) * UGAL_PER_KMPS2
   };
 }
+const eMAtt = exacteOppervlakGrenzen(GM_MOON_KM3, DATA.distance_km);  // laag 1
+const eZAtt = exacteOppervlakGrenzen(GM_SUN_KM3, DATA.sun_distance_km);  // laag 5
+const mCentrum = moonAttCenterVec.length();  // laag 2
+const zCentrum = sunAttCenterVec.length();   // laag 6
+
+// laag 3/4 en 7/8 (gradiënt + tangentieel, per hemellichaam): dit veld is
+// axiaal symmetrisch rond de richting van dat hemellichaam, dus een fijne
+// scan langs 1 hoek (elke 0,005°) volstaat om de echte extremen te vinden —
+// veel fijner dan de 324 getekende pijltjes, die niet op de exacte
+// sublunair/antipode/compressiehoek liggen.
+function exacteGradientGrenzen(gmKm3, dKm, richting, centerVec) {
+  const hulpAs = Math.abs(richting.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const zijAs = new THREE.Vector3().crossVectors(richting, hulpAs).normalize();
+  const STAPPEN = 36000;
+  let minVol = Infinity, maxVol = -Infinity, minTan = Infinity, maxTan = -Infinity;
+  for (let i = 0; i <= STAPPEN; i++) {
+    const hoek = Math.PI * i / STAPPEN;
+    const s = richting.clone().multiplyScalar(Math.cos(hoek)).addScaledVector(zijAs, Math.sin(hoek));
+    const puntKm = s.clone().multiplyScalar(EARTH_RADIUS_KM);
+    const rBody = richting.clone().multiplyScalar(dKm).sub(puntKm);
+    const dist = rBody.length();
+    const gradVec = rBody.normalize().multiplyScalar(gmKm3 / (dist * dist) * UGAL_PER_KMPS2).sub(centerVec);
+    const volLen = gradVec.length();
+    const tanLen = gradVec.sub(s.multiplyScalar(gradVec.dot(s))).length();
+    if (volLen < minVol) minVol = volLen;
+    if (volLen > maxVol) maxVol = volLen;
+    if (tanLen < minTan) minTan = tanLen;
+    if (tanLen > maxTan) maxTan = tanLen;
+  }
+  return { minVol, maxVol, minTan, maxTan };
+}
+const eMGrad = exacteGradientGrenzen(GM_MOON_KM3, DATA.distance_km, moonDir, moonAttCenterVec);  // laag 3/4
+const eZGrad = exacteGradientGrenzen(GM_SUN_KM3, DATA.sun_distance_km, sunDir, sunAttCenterVec);  // laag 7/8
+
+// laag 9/10 (som Maan + Zon): Maan en Zon staan zelden op 1 lijn, dus dit
+// veld heeft geen enkele symmetrie-as meer — een volledige, fijne bolscan
+// (60.000 punten i.p.v. de 324 getekende pijltjes) is hier nodig.
+function exacteTotaalGrenzen() {
+  const STAPPEN = 60000;
+  const gHoek = Math.PI * (3 - Math.sqrt(5));
+  let minVol = Infinity, maxVol = -Infinity, minTan = Infinity, maxTan = -Infinity;
+  for (let i = 0; i < STAPPEN; i++) {
+    const y = 1 - (i / (STAPPEN - 1)) * 2;
+    const rad = Math.sqrt(Math.max(0, 1 - y * y));
+    const th = gHoek * i;
+    const s = new THREE.Vector3(Math.cos(th) * rad, y, Math.sin(th) * rad);
+    const puntKm = s.clone().multiplyScalar(EARTH_RADIUS_KM);
+
+    const rMoon = moonPosKm.clone().sub(puntKm);
+    const dMoon = rMoon.length();
+    const mVec = rMoon.normalize().multiplyScalar(GM_MOON_KM3 / (dMoon * dMoon) * UGAL_PER_KMPS2);
+
+    const rSun = sunPosKm.clone().sub(puntKm);
+    const dSun = rSun.length();
+    const sVec = rSun.normalize().multiplyScalar(GM_SUN_KM3 / (dSun * dSun) * UGAL_PER_KMPS2);
+
+    const gradVec = mVec.sub(moonAttCenterVec).add(sVec.sub(sunAttCenterVec));
+    const volLen = gradVec.length();
+    const tanLen = gradVec.sub(s.multiplyScalar(gradVec.dot(s))).length();
+    if (volLen < minVol) minVol = volLen;
+    if (volLen > maxVol) maxVol = volLen;
+    if (tanLen < minTan) minTan = tanLen;
+    if (tanLen > maxTan) maxTan = tanLen;
+  }
+  return { minVol, maxVol, minTan, maxTan };
+}
+const eTGrad = exacteTotaalGrenzen();  // laag 9/10
+
+document.getElementById('magnitudes').innerHTML = `
+  <dt class="layer-sub">1. Maan oppervlakte</dt>
+  <dt>min</dt><dd>${ugal(eMAtt.min)}</dd>
+  <dt>max</dt><dd>${ugal(eMAtt.max)}</dd>
+  <dt class="layer-sub">2. Maan centrum</dt>
+  <dt>waarde</dt><dd>${ugal(mCentrum)}</dd>
+  <dt class="layer-sub">3. Maan gradiënt</dt>
+  <dt>min</dt><dd>${ugal(eMGrad.minVol)}</dd>
+  <dt>max</dt><dd>${ugal(eMGrad.maxVol)}</dd>
+  <dt class="layer-sub">4. Maan tangentieel</dt>
+  <dt>min</dt><dd>${ugal(eMGrad.minTan)}</dd>
+  <dt>max</dt><dd>${ugal(eMGrad.maxTan)}</dd>
+  <dt class="layer-sub">5. Zon oppervlakte</dt>
+  <dt>min</dt><dd>${ugal(eZAtt.min)}</dd>
+  <dt>max</dt><dd>${ugal(eZAtt.max)}</dd>
+  <dt class="layer-sub">6. Zon centrum</dt>
+  <dt>waarde</dt><dd>${ugal(zCentrum)}</dd>
+  <dt class="layer-sub">7. Zon gradiënt</dt>
+  <dt>min</dt><dd>${ugal(eZGrad.minVol)}</dd>
+  <dt>max</dt><dd>${ugal(eZGrad.maxVol)}</dd>
+  <dt class="layer-sub">8. Zon tangentieel</dt>
+  <dt>min</dt><dd>${ugal(eZGrad.minTan)}</dd>
+  <dt>max</dt><dd>${ugal(eZGrad.maxTan)}</dd>
+  <dt class="layer-sub">9. Totaal gradiënt</dt>
+  <dt>min</dt><dd>${ugal(eTGrad.minVol)}</dd>
+  <dt>max</dt><dd>${ugal(eTGrad.maxVol)}</dd>
+  <dt class="layer-sub">10. Totaal tangentieel</dt>
+  <dt>min</dt><dd>${ugal(eTGrad.minTan)}</dd>
+  <dt>max</dt><dd>${ugal(eTGrad.maxTan)}</dd>
+`;
 
 // ---------------------------------------------------------------
-// Schakelaar: false = statische testdata (optie B), true = live data via eigen API (optie A)
-// Let op: optie A vereist deployment op Cloudflare Pages (met /functions/api/tidalvectors.js mee),
-// want /api/tidalvectors bestaat enkel dan als route. Werkt niet bij rechtstreeks file:// openen.
+// INFOPANEEL VULLEN
 // ---------------------------------------------------------------
-const USE_LIVE_DATA = true;
+document.getElementById('v-time').textContent = DATA.timestamp_utc.replace('T',' ').replace('Z',' UTC');
+document.getElementById('v-dist').textContent = DATA.distance_km.toLocaleString('nl-BE') + ' km';
+document.getElementById('v-distsun').textContent = DATA.sun_distance_km.toLocaleString('nl-BE') + ' km';
 
-async function loadVectors() {
-  if (USE_LIVE_DATA) {
-    const response = await fetch('/api/tidalvectors');
-    const data = await response.json();
-    return data; // { moonVector, sunVector, barycenterVector, time }
-  }
-  const moonVector = STATIC_MOON_VECTOR;
-  const sunVector = STATIC_SUN_VECTOR;
-  const barycenterVector = computeBarycenterVector(moonVector);
-  return { moonVector, sunVector, barycenterVector };
+// ---------------------------------------------------------------
+// RENDER LOOP
+// ---------------------------------------------------------------
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
 }
+animate();
 
-function vectorLength(v) {
-  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-}
-
-function showInfo(moonVector, sunVector, barycenterVector, time) {
-  const moonDist = vectorLength(moonVector);
-  const sunDist = vectorLength(sunVector);
-  const baryDist = vectorLength(barycenterVector);
-  const bronLabel = USE_LIVE_DATA
-    ? `live JPL Horizons (${time || 'nu'})`
-    : 'statische testdata (2026-Aug-10 12:00 TDB)';
-
-  document.getElementById('info').innerHTML = `
-    <table>
-      <tr><td class="label">Bron</td><td>${bronLabel}</td></tr>
-      <tr><td class="label">Afstand Maan</td><td>${moonDist.toFixed(0)} km</td></tr>
-      <tr><td class="label">Afstand Zon</td><td>${sunDist.toFixed(0)} km</td></tr>
-      <tr><td class="label">Afstand barycentrum</td><td>${baryDist.toFixed(0)} km (binnen aardstraal 6378 km)</td></tr>
-    </table>
-  `;
-}
-
-// Eenvoudige 2D top-down projectie (X-Y vlak) om richting te tonen.
-// Werkelijke afstanden verschillen enorm (Maan ~380.000 km, Zon ~150 miljoen km),
-// dus de pijlen krijgen een vaste visuele lengte; enkel de RICHTING is realistisch.
-function drawDiagram(moonVector, sunVector, barycenterVector) {
-  const svg = document.getElementById('diagram');
-  const EARTH_RADIUS_PX = 40;
-  const ARROW_LENGTH_PX = 220;
-
-  function unitAngle(v) {
-    const len = Math.sqrt(v.x * v.x + v.y * v.y);
-    return { dx: v.x / len, dy: -v.y / len }; // -y voor schermcoördinaten (y omlaag)
-  }
-
-  const moonDir = unitAngle(moonVector);
-  const sunDir = unitAngle(sunVector);
-
-  // schaal barycentrum wel realistisch (het ligt binnen de aardbol)
-  const baryScale = EARTH_RADIUS_PX / 6378;
-  const baryX = barycenterVector.x * baryScale;
-  const baryY = -barycenterVector.y * baryScale;
-
-  svg.innerHTML = `
-    <circle class="earth" cx="0" cy="0" r="${EARTH_RADIUS_PX}"></circle>
-    <circle class="barycenter" cx="${baryX.toFixed(2)}" cy="${baryY.toFixed(2)}" r="3"></circle>
-
-    <line class="arrow-moon" x1="0" y1="0" x2="${(moonDir.dx * ARROW_LENGTH_PX).toFixed(1)}" y2="${(moonDir.dy * ARROW_LENGTH_PX).toFixed(1)}"></line>
-    <text class="arrow-label" x="${(moonDir.dx * ARROW_LENGTH_PX + 8).toFixed(1)}" y="${(moonDir.dy * ARROW_LENGTH_PX).toFixed(1)}">Maan</text>
-
-    <line class="arrow-sun" x1="0" y1="0" x2="${(sunDir.dx * ARROW_LENGTH_PX).toFixed(1)}" y2="${(sunDir.dy * ARROW_LENGTH_PX).toFixed(1)}"></line>
-    <text class="arrow-label" x="${(sunDir.dx * ARROW_LENGTH_PX + 8).toFixed(1)}" y="${(sunDir.dy * ARROW_LENGTH_PX).toFixed(1)}">Zon</text>
-  `;
-}
-
-loadVectors().then(({ moonVector, sunVector, barycenterVector, time }) => {
-  showInfo(moonVector, sunVector, barycenterVector, time);
-  drawDiagram(moonVector, sunVector, barycenterVector);
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
 });
-</script>
 
+})();
+</script>
 </body>
 </html>

@@ -3,8 +3,8 @@
 // Optioneel: /api/tidalvectors?time=2026-08-10T12:00:00Z (anders: huidig tijdstip)
 //
 // Haalt server-side de geocentrische Maan- en Zonvector op bij JPL Horizons
-// en berekent de aarde->barycentrum vector. Draait op Cloudflare's servers,
-// dus geen CORS-probleem voor de browser.
+// (eclipticaal J2000) en zet die om naar sublunaire/subsolaire breedte- en
+// lengtegraad (aardvast) — precies het DATA-formaat dat index.html verwacht.
 
 const HORIZONS_URL = "https://ssd.jpl.nasa.gov/api/horizons.api";
 
@@ -13,8 +13,8 @@ const BODY_ID = {
   sun: "10"
 };
 
-// M_maan / M_aarde
-const MASS_RATIO_MOON_EARTH = 1 / 81.30056;
+// Scheve stand van de ecliptica t.o.v. de evenaar, op epoch J2000.0 (graden)
+const OBLIQUITY_J2000_DEG = 23.4392911;
 
 // Zet een JS Date om naar het formaat dat Horizons verwacht: YYYY-MMM-DD HH:MM
 function toHorizonsTime(date) {
@@ -71,7 +71,7 @@ function parseVectorFromResultText(resultText) {
   };
 }
 
-// Haalt de geocentrische vector op van 1 hemellichaam op een gegeven tijdstip.
+// Haalt de geocentrische, eclipticale J2000-vector op van 1 hemellichaam.
 async function fetchVector(bodyId, isoDate) {
   const url = buildHorizonsUrl(bodyId, isoDate);
   const response = await fetch(url);
@@ -79,14 +79,47 @@ async function fetchVector(bodyId, isoDate) {
   return parseVectorFromResultText(data.result);
 }
 
-// r_aarde->barycentrum = (M_maan / (M_aarde + M_maan)) * r_aarde->maan
-function computeBarycenterVector(moonVector) {
-  const factor = MASS_RATIO_MOON_EARTH / (1 + MASS_RATIO_MOON_EARTH);
+function vectorLength(v) {
+  return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+}
+
+// Eclipticaal J2000 -> equatoriaal J2000: rotatie om de X-as met de
+// scheve-ecliptica-hoek. Standaardtransformatie (bv. Meeus, Astronomical
+// Algorithms, hfst. 25-26).
+function eclipticToEquatorial(v) {
+  const eps = OBLIQUITY_J2000_DEG * Math.PI / 180;
   return {
-    x: moonVector.x * factor,
-    y: moonVector.y * factor,
-    z: moonVector.z * factor
+    x: v.x,
+    y: v.y * Math.cos(eps) - v.z * Math.sin(eps),
+    z: v.y * Math.sin(eps) + v.z * Math.cos(eps)
   };
+}
+
+// Greenwich Mean Sidereal Time (graden) op een gegeven UTC-tijdstip.
+// Standaardformule (IAU 1982 / Vallado), UTC gebruikt als proxy voor UT1
+// (verschil < 1 seconde, verwaarloosbaar op dit precisieniveau).
+function computeGmstDeg(date) {
+  const JD = date.getTime() / 86400000 + 2440587.5;
+  const D = JD - 2451545.0;
+  const T = D / 36525;
+  const gmst = 280.46061837
+    + 360.98564736629 * D
+    + 0.000387933 * T * T
+    - (T * T * T) / 38710000;
+  return ((gmst % 360) + 360) % 360;
+}
+
+// Sub-punt (breedte/lengte, aardvast) van een equatoriale J2000-vector,
+// gegeven de GMST op hetzelfde tijdstip. Lengtegraad oost-positief.
+function computeSubPoint(vectorEq, gmstDeg) {
+  const r = vectorLength(vectorEq);
+  const raDeg = Math.atan2(vectorEq.y, vectorEq.x) * 180 / Math.PI;
+  const decDeg = Math.asin(vectorEq.z / r) * 180 / Math.PI;
+
+  let lonDeg = ((raDeg - gmstDeg) % 360 + 360) % 360;
+  if (lonDeg > 180) lonDeg -= 360;
+
+  return { lat: decDeg, lon: lonDeg };
 }
 
 // Cloudflare Pages Function entry point voor GET-requests.
@@ -96,18 +129,33 @@ export async function onRequestGet(context) {
   const isoDate = timeParam ? new Date(timeParam) : new Date();
 
   try {
-    const moonVector = await fetchVector(BODY_ID.moon, isoDate);
-    const sunVector = await fetchVector(BODY_ID.sun, isoDate);
-    const barycenterVector = computeBarycenterVector(moonVector);
+    const moonVectorEcl = await fetchVector(BODY_ID.moon, isoDate);
+    const sunVectorEcl = await fetchVector(BODY_ID.sun, isoDate);
 
-    return new Response(
-      JSON.stringify({ moonVector, sunVector, barycenterVector, time: isoDate.toISOString() }),
-      { headers: { "Content-Type": "application/json" } }
-    );
+    const moonVectorEq = eclipticToEquatorial(moonVectorEcl);
+    const sunVectorEq = eclipticToEquatorial(sunVectorEcl);
+
+    const gmstDeg = computeGmstDeg(isoDate);
+    const moonSub = computeSubPoint(moonVectorEq, gmstDeg);
+    const sunSub = computeSubPoint(sunVectorEq, gmstDeg);
+
+    const data = {
+      timestamp_utc: isoDate.toISOString(),
+      distance_km: vectorLength(moonVectorEcl),
+      sun_distance_km: vectorLength(sunVectorEcl),
+      sublunar_lat_deg: moonSub.lat,
+      sublunar_lon_deg: moonSub.lon,
+      subsolar_lat_deg: sunSub.lat,
+      subsolar_lon_deg: sunSub.lon
+    };
+
+    return new Response(JSON.stringify(data), {
+      headers: { "Content-Type": "application/json" }
+    });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
   }
 }
