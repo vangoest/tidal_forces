@@ -13,9 +13,6 @@ const BODY_ID = {
   sun: "10"
 };
 
-// Scheve stand van de ecliptica t.o.v. de evenaar, op epoch J2000.0 (graden)
-const OBLIQUITY_J2000_DEG = 23.4392911;
-
 // Zet een JS Date om naar het formaat dat Horizons verwacht: YYYY-MMM-DD HH:MM
 function toHorizonsTime(date) {
   const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -83,18 +80,6 @@ function vectorLength(v) {
   return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
-// Eclipticaal J2000 -> equatoriaal J2000: rotatie om de X-as met de
-// scheve-ecliptica-hoek. Standaardtransformatie (bv. Meeus, Astronomical
-// Algorithms, hfst. 25-26).
-function eclipticToEquatorial(v) {
-  const eps = OBLIQUITY_J2000_DEG * Math.PI / 180;
-  return {
-    x: v.x,
-    y: v.y * Math.cos(eps) - v.z * Math.sin(eps),
-    z: v.y * Math.sin(eps) + v.z * Math.cos(eps)
-  };
-}
-
 // Greenwich Mean Sidereal Time (graden) op een gegeven UTC-tijdstip.
 // Standaardformule (IAU 1982 / Vallado), UTC gebruikt als proxy voor UT1
 // (verschil < 1 seconde, verwaarloosbaar op dit precisieniveau).
@@ -129,11 +114,10 @@ export async function onRequestGet(context) {
   const isoDate = timeParam ? new Date(timeParam) : new Date();
 
   try {
-    const moonVectorEcl = await fetchVector(BODY_ID.moon, isoDate);
-    const sunVectorEcl = await fetchVector(BODY_ID.sun, isoDate);
-
-    const moonVectorEq = eclipticToEquatorial(moonVectorEcl);
-    const sunVectorEq = eclipticToEquatorial(sunVectorEcl);
+    // REF_PLANE: "FRAME" levert al equatoriale (ICRF/J2000) vectoren op —
+    // dus GEEN eclipticaal->equatoriaal-rotatie meer nodig.
+    const moonVectorEq = await fetchVector(BODY_ID.moon, isoDate);
+    const sunVectorEq = await fetchVector(BODY_ID.sun, isoDate);
 
     const gmstDeg = computeGmstDeg(isoDate);
     const moonSub = computeSubPoint(moonVectorEq, gmstDeg);
@@ -141,8 +125,8 @@ export async function onRequestGet(context) {
 
     const data = {
       timestamp_utc: isoDate.toISOString(),
-      distance_km: vectorLength(moonVectorEcl),
-      sun_distance_km: vectorLength(sunVectorEcl),
+      distance_km: vectorLength(moonVectorEq),
+      sun_distance_km: vectorLength(sunVectorEq),
       sublunar_lat_deg: moonSub.lat,
       sublunar_lon_deg: moonSub.lon,
       subsolar_lat_deg: sunSub.lat,
