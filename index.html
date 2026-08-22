@@ -210,13 +210,13 @@ const deg2rad = Math.PI / 180;
 const latM = DATA.sublunar_lat_deg * deg2rad;
 const lonM = DATA.sublunar_lon_deg * deg2rad;
 const moonDir = new THREE.Vector3(
-  Math.cos(latM) * Math.cos(lonM), Math.sin(latM), Math.cos(latM) * Math.sin(lonM)
+  Math.cos(latM) * Math.cos(lonM), Math.sin(latM), -Math.cos(latM) * Math.sin(lonM)
 ).normalize();
 
 const latS = DATA.subsolar_lat_deg * deg2rad;
 const lonS = DATA.subsolar_lon_deg * deg2rad;
 const sunDir = new THREE.Vector3(
-  Math.cos(latS) * Math.cos(lonS), Math.sin(latS), Math.cos(latS) * Math.sin(lonS)
+  Math.cos(latS) * Math.cos(lonS), Math.sin(latS), -Math.cos(latS) * Math.sin(lonS)
 ).normalize();
 
 // ---------------------------------------------------------------
@@ -688,5 +688,7 @@ window.addEventListener('resize', () => {
 
 })();
 </script>
+</body>
+</html>
 </body>
 </html>
