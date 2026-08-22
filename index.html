@@ -59,6 +59,9 @@
   #info-extra { bottom: 18px; right: 18px; padding: 14px 16px; width: 300px; }
   #info-extra h2 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 8px; color: var(--dim); }
 
+  #bron { position: fixed; z-index: 4; font-size: 11px; color: var(--dim);
+    bottom: 18px; left: 50%; transform: translateX(-50%); }
+
   /* ---------------------------------------------------------------
      KLEIN SCHERM (tablet/smartphone) — desktop-layout hierboven blijft
      ongewijzigd; alles hieronder is enkel actief onder de breakpoint.
@@ -86,6 +89,8 @@
 
     #layers-wrap { top: 66px; bottom: auto; max-height: calc(100vh - 150px); }
     #info, #info-extra { top: auto; bottom: 68px; max-height: calc(100vh - 150px); }
+
+    #bron { left: auto; right: 12px; bottom: 18px; transform: none; }
   }
 </style>
 </head>
@@ -124,19 +129,19 @@
   <label><input type="checkbox" id="chk-m-att"> 1. Aantrekking (oppervlak)</label>
   <label><input type="checkbox" id="chk-m-att-c"> 2. Aantrekking (centrum, 1 pijl)</label>
   <label><input type="checkbox" id="chk-m-grad"> 3. Gradiënt t.o.v. centrum</label>
-  <label><input type="checkbox" id="chk-m-grad-tan"> 4. Gradiënt, tangentieel</label>
+  <label><input type="checkbox" id="chk-m-grad-tan" checked> 4. Gradiënt, tangentieel</label>
   <hr>
   <h2>Zon</h2>
   <div class="layer-arrow"><svg width="46" height="16" viewBox="0 0 46 16"><line x1="1" y1="8" x2="34" y2="8" stroke="#ff5b5b" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="1" stroke="#ff5b5b" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="15" stroke="#ff5b5b" stroke-width="4" stroke-linecap="round"/></svg></div>
   <label><input type="checkbox" id="chk-z-att"> 5. Aantrekking (oppervlak)</label>
   <label><input type="checkbox" id="chk-z-att-c"> 6. Aantrekking (centrum, 1 pijl)</label>
   <label><input type="checkbox" id="chk-z-grad"> 7. Gradiënt t.o.v. centrum</label>
-  <label><input type="checkbox" id="chk-z-grad-tan"> 8. Gradiënt, tangentieel</label>
+  <label><input type="checkbox" id="chk-z-grad-tan" checked> 8. Gradiënt, tangentieel</label>
   <hr>
   <h2>Totaal</h2>
   <div class="layer-arrow"><svg width="46" height="16" viewBox="0 0 46 16"><line x1="1" y1="8" x2="34" y2="8" stroke="#b98cff" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="1" stroke="#b98cff" stroke-width="4" stroke-linecap="round"/><line x1="45" y1="8" x2="34" y2="15" stroke="#b98cff" stroke-width="4" stroke-linecap="round"/></svg></div>
-  <label><input type="checkbox" id="chk-t-grad" checked> 9. Som gradiënten (Maan + Zon)</label>
-  <label><input type="checkbox" id="chk-t-grad-tan"> 10. Som, tangentieel</label>
+  <label><input type="checkbox" id="chk-t-grad"> 9. Som gradiënten (Maan + Zon)</label>
+  <label><input type="checkbox" id="chk-t-grad-tan" checked> 10. Som, tangentieel</label>
 </div>
 
 <div class="panel" id="markers">
@@ -159,6 +164,8 @@
 	Alle andere lagen hebben ook eenzelfde schaal.
   </div>
 </div>
+
+<div id="bron">Data: JPL Horizons</div>
 
 <script>
 // Klein-scherm knoppen: Legende (= layers-wrap), Cijfers (= info), Informatie (= info-extra)
@@ -544,7 +551,9 @@ for (const key in alleParen) {
   document.getElementById('chk-' + key).addEventListener('change', e => { volGroup.visible = e.target.checked; });
   document.getElementById('chk-' + key + '-tan').addEventListener('change', e => { tanGroup.visible = e.target.checked; });
 }
-tGradPair.volGroup.visible = true; // standaard aan, matcht de checkbox hierboven
+tGradPair.tanGroup.visible = true;  // laag 10 — standaard aan
+mGradPair.tanGroup.visible = true;  // laag 4  — standaard aan
+zGradPair.tanGroup.visible = true;  // laag 8  — standaard aan
 
 // klassieke aardeweergave overal: opaciteit 0.75 bij de "gewone" lagen,
 // opaciteit 0.5 bij de centrale-pijl-lagen 2/6, opaciteit 1 (ondoorzichtig)
