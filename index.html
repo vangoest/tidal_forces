@@ -58,11 +58,48 @@
 
   #info-extra { bottom: 18px; right: 18px; padding: 14px 16px; width: 300px; }
   #info-extra h2 { font-size: 12px; letter-spacing: .04em; text-transform: uppercase; margin: 0 0 8px; color: var(--dim); }
+
+  /* ---------------------------------------------------------------
+     KLEIN SCHERM (tablet/smartphone) — desktop-layout hierboven blijft
+     ongewijzigd; alles hieronder is enkel actief onder de breakpoint.
+     --------------------------------------------------------------- */
+  .mobile-btn { display: none; z-index: 6; background: rgba(12,18,32,0.9);
+    border: 1px solid var(--line); border-radius: 8px; color: var(--text);
+    font: inherit; font-size: 12.5px; padding: 9px 13px; cursor: pointer;
+    align-items: center; gap: 6px; backdrop-filter: blur(6px); }
+  .mobile-btn svg { transition: transform .15s ease; flex: none; }
+  .mobile-btn.active svg { transform: rotate(180deg); }
+  #mobile-bottom-btns { display: none; position: fixed; bottom: 18px; left: 18px;
+    gap: 10px; z-index: 6; }
+
+  @media (max-width: 900px) {
+    #btn-legende { display: flex; position: fixed; top: 18px; left: 18px; }
+    #mobile-bottom-btns { display: flex; }
+    #mobile-bottom-btns .mobile-btn { display: flex; }
+
+    #info, #layers-wrap, #info-extra { display: none; }
+    #info.open, #info-extra.open { display: block; }
+    #layers-wrap.open { display: flex; }
+
+    #info, #info-extra, #layers-wrap { left: 12px; right: 12px; width: auto; }
+    #layers, #markers { width: 100%; }
+
+    #layers-wrap { top: 66px; bottom: auto; max-height: calc(100vh - 150px); }
+    #info, #info-extra { top: auto; bottom: 68px; max-height: calc(100vh - 150px); }
+  }
 </style>
 </head>
 <body>
 
 <div id="globe"></div>
+
+<button class="mobile-btn" id="btn-legende">Legende
+  <svg width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+<div id="mobile-bottom-btns">
+  <button class="mobile-btn" id="btn-cijfers">Cijfers</button>
+  <button class="mobile-btn" id="btn-info">Informatie</button>
+</div>
 
 <div class="panel" id="info">
   <h1>Getijkrachten</h1>
@@ -123,6 +160,23 @@
   </div>
 </div>
 
+<script>
+// Klein-scherm knoppen: Legende (= layers-wrap), Cijfers (= info), Informatie (= info-extra)
+(function () {
+  const koppels = [
+    { btn: document.getElementById('btn-legende'), paneel: document.getElementById('layers-wrap') },
+    { btn: document.getElementById('btn-cijfers'), paneel: document.getElementById('info') },
+    { btn: document.getElementById('btn-info'), paneel: document.getElementById('info-extra') }
+  ];
+  koppels.forEach(({ btn, paneel }) => {
+    btn.addEventListener('click', () => {
+      const wasOpen = paneel.classList.contains('open');
+      koppels.forEach(k => { k.paneel.classList.remove('open'); k.btn.classList.remove('active'); });
+      if (!wasOpen) { paneel.classList.add('open'); btn.classList.add('active'); }
+    });
+  });
+})();
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <script>
@@ -688,7 +742,5 @@ window.addEventListener('resize', () => {
 
 })();
 </script>
-</body>
-</html>
 </body>
 </html>
